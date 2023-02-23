@@ -1,4 +1,4 @@
-import requests, csv
+import requests, csv, pandas
 
 #FUNCTIONS
 def get_json_from_openlibrary(query):
@@ -29,25 +29,16 @@ def get_publisher(json_data):
     return publisher
 
 
-#IMPORT ISBNs INTO LISTS
-reading_list_ISBNs = []
-with open("reading_list_ISBNs.csv", "r", encoding="utf-8") as file:
-    reader = csv.reader(file)
-    for row in reader:
-        reading_list_ISBNs.append(row[0])
-
-library_ISBNs = []
-with open("library_ISBNs.csv", "r", encoding="utf-8") as file:
-    reader = csv.reader(file)
-    for row in reader:
-        library_ISBNs.append(row[0])
+#READ CSVs
+reading_list_data = pandas.read_csv("reading_list.csv")
+library_ISBNs = pandas.read_csv("library_ISBNs.csv")['ISBN'].to_list()
 
 counter = 1
 results = []
-for ISBN in reading_list_ISBNs:
-    print(f"Checking item {counter} of {len(reading_list_ISBNs)}")
+for ISBN in reading_list_data['ISBN']:
+    print(f"Checking item {counter} of {len(reading_list_data['ISBN'].to_list())}")
     counter += 1
-    data = get_json_from_openlibrary("isbn/" + ISBN)
+    data = get_json_from_openlibrary("isbn/" + str(ISBN))
     bibliographic_data = {
         "work_ID": data["works"][0]["key"],
         "authors": get_author_names(data),
@@ -55,14 +46,14 @@ for ISBN in reading_list_ISBNs:
         "publisher": get_publisher(data),
         "year": data["publish_date"]
     }
-    if ISBN in library_ISBNs:
+    if int(ISBN) in library_ISBNs:
         bibliographic_data["match"] = "edition"
     else:
         work_data = get_json_from_openlibrary(bibliographic_data['work_ID'] + "/editions")
         for edition in work_data["entries"]:
             if "isbn_13" in edition.keys():
                 for other_edition_ISBN in edition['isbn_13']:
-                    if other_edition_ISBN in library_ISBNs:
+                    if int(other_edition_ISBN) in library_ISBNs:
                         bibliographic_data["match"] = "work"
                         bibliographic_data['match_info'] = f"{edition['publishers'][0]}, {edition['publish_date']}"
                         break
