@@ -86,7 +86,8 @@ def format_title(string):
 
 #CREATE HTML
 with open("results.html", "w", encoding="utf-8") as file:
-    file.write('''<!DOCTYPE html>
+    file.write('''
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -99,7 +100,7 @@ leganto_list_data = pandas.read_csv("example_leganto_list.csv")
 queens_library_data = pandas.read_csv("queens_library_holdings.csv")
 
 counter = 1
-results = []
+sections = []
 for index, row in leganto_list_data.iterrows():
     print(f"Checking item {counter} of {len(leganto_list_data.index)}")
     counter += 1
@@ -110,7 +111,8 @@ for index, row in leganto_list_data.iterrows():
     if row["Citation Type"] in ["Book", "Book chapter"]: #verify book chapter is formatted properly; add ebook?
     #STEP 2: DOES QUEENS' HAVE A HOLDINGS RECORD ATTACHED?
         if "Queens'" in row["Citation Availability"]:
-            bib_data["match"] = "holdings"
+            bib_data["match"] = "Library's holdings are attached."
+            bib_data["colour"] = "MediumSeaGreen"
             print(bib_data["match"])
     #STEP 3: DOES THE ISBN MATCH QUEENS' ISBNs?
     if "match" not in bib_data.keys():
@@ -120,7 +122,8 @@ for index, row in leganto_list_data.iterrows():
             if isinstance(r["ISBN"], str):
                 library_ISBNs += r["ISBN"].split("; ")
                 if leganto_ISBN in r["ISBN"].split("; "):
-                    bib_data["match"] = "ISBN"
+                    bib_data["match"] = "ISBN matches library's holdings."
+                    bib_data["colour"] = "MediumSeaGreen"
                     print(bib_data["match"])
                     break
     #STEP 4: DO ANY OF THE OTHER OPEN LIBRARY EDITIONS MATCH QUEENS' ISBNs?
@@ -134,7 +137,8 @@ for index, row in leganto_list_data.iterrows():
                     for edition_ISBN in edition['isbn_13']:
                         if int(edition_ISBN) in library_ISBNs:
                             bib_data["match"] = "work"
-                            bib_data['match_info'] = f"{edition['publishers'][0]}, {edition['publish_date']}"
+                            bib_data["colour"] = "LightGreen"
+                            bib_data['match_info'] = f"Library has {edition['publishers'][0]}, {edition['publish_date']} edition."
                             print(bib_data["match"])
                             break
     #STEP 5: ARE THERE ANY TEXT MATCHES FOR AUTHORS/TITLES AMONG QUEENS' HOLDINGS?
@@ -143,17 +147,40 @@ for index, row in leganto_list_data.iterrows():
         for i, r in queens_library_data.iterrows():
             queens_title = format_title(r["Title"])
             if leganto_title in queens_title:
-                bib_data["match"] = "title"
+                bib_data["match"] = "Matches for this title are found among library holdings."
+                bib_data["colour"] = "Orange"
                 # bib_data['match_info']
                 print(bib_data["match"])
                 break
+    #STEP 6: REMAINING ITEMS WITH NO MATCHES
     if "match" not in bib_data.keys():
-        print("no match")
+        bib_data["match"] = "No match found."
+        bib_data["colour"] = "OrangeRed"
+    #HTML FORMATTING
+    html_section = ""
+    if row["Section Name"] not in sections:
+        sections.append(row["Section Name"])
+        html_section += f"<h1>{row['Section Name']}</h1>"
+    html_edition = ""
+    if isinstance(row["Citation Edition"], str):
+        html_edition += f"—{row['Citation Edition']}"
+    html_pub = "—"
+    if isinstance(row["Citation Place of publication"], str):
+        html_pub += f"{row['Citation Place of publication']} : "
+    html_pub += row["Citation Publisher"]
+    if html_pub[-1] not in ["]", "."]:
+        html_pub += f", {row['Citation Publication Date']}."
+    with open("results.html", "a", encoding="utf-8") as file:
+        file.write(f'''
+        {html_section}
+    <p><span style="color:{bib_data['colour']}"><strong>{row['Citation Title']}</strong>
+    <br>{html_edition}{html_pub}<br></span>{bib_data["match"]}
+    </p>
+    ''')
 
-    # #Write to HTML file in the main loop
 
-# Assume input is Leganto list
-# -- format citations for chapters, ebooks, websites etc.
-# -- check if holdings attached first
-# If no match is found through ISBNs then do a title/author text search
-# Use titles and authors from both input CSV and from OpenLibrary "work"
+with open("results.html", "a", encoding="utf-8") as file:
+    file.write('''
+</body>
+</html>
+''')
