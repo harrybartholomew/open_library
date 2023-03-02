@@ -113,6 +113,7 @@ for index, row in leganto_list_data.iterrows():
         if "Queens'" in row["Citation Availability"]:
             bib_data["match"] = "Library's holdings are attached."
             bib_data["colour"] = "MediumSeaGreen"
+            bib_data['match_info'] = ""
             print(bib_data["match"])
     #STEP 3: DOES THE ISBN MATCH QUEENS' ISBNs?
     if "match" not in bib_data.keys():
@@ -124,6 +125,7 @@ for index, row in leganto_list_data.iterrows():
                 if leganto_ISBN in r["ISBN"].split("; "):
                     bib_data["match"] = "ISBN matches library's holdings."
                     bib_data["colour"] = "MediumSeaGreen"
+                    bib_data['match_info'] = ""
                     print(bib_data["match"])
                     break
     #STEP 4: DO ANY OF THE OTHER OPEN LIBRARY EDITIONS MATCH QUEENS' ISBNs?
@@ -143,19 +145,40 @@ for index, row in leganto_list_data.iterrows():
                             break
     #STEP 5: ARE THERE ANY TEXT MATCHES FOR AUTHORS/TITLES AMONG QUEENS' HOLDINGS?
     if "match" not in bib_data.keys():
+        matches = []
         leganto_title = format_title(row["Citation Title"])
         for i, r in queens_library_data.iterrows():
             queens_title = format_title(r["Title"])
             if leganto_title in queens_title:
-                bib_data["match"] = "Matches for this title are found among library holdings."
+                matches.append({
+                    "MMSID": r["MMS Id"],
+                    "location": r["Location Name"],
+                    "classmark": r["Permanent Call Number"],
+                    "statement of res": r["245$c"],
+                    "title":r["Title"],
+                    "publisher": r["Publisher"],
+                    "date": r["Publication Date"]
+                })
+                bib_data["match"] = "Matches for this title are found among library holdings:"
                 bib_data["colour"] = "Orange"
-                # bib_data['match_info']
-                print(bib_data["match"])
-                break
+                if len(matches) > 7:
+                    bib_data["match"] = "This title matched with too many library titles to be accurate."
+                    bib_data["colour"] = "Orange"
+                    bib_data["match_info"] = ""
+                    break
+        if 0 < len(matches) < 8:
+            bib_data["match_info"] = "<ul>"
+            for match in matches:
+                bib_data["match_info"] += f'''
+<li><strong>{match['location']}: {match['classmark']}</strong> {match['title']} {match['statement of res']}<br>
+({match["publisher"]}, {match['date']}) [MMSID: {match['MMSID']}]</li>
+'''
+            bib_data["match_info"] += "</ul>"
     #STEP 6: REMAINING ITEMS WITH NO MATCHES
     if "match" not in bib_data.keys():
         bib_data["match"] = "No match found."
         bib_data["colour"] = "OrangeRed"
+        bib_data['match_info'] = ""
     #HTML FORMATTING
     html_section = ""
     if row["Section Name"] not in sections:
@@ -174,7 +197,7 @@ for index, row in leganto_list_data.iterrows():
         file.write(f'''
         {html_section}
     <p><span style="color:{bib_data['colour']}"><strong>{row['Citation Title']}</strong>
-    <br>{html_edition}{html_pub}<br></span>{bib_data["match"]}
+    <br>{html_edition}{html_pub}<br></span>{bib_data["match"]}<br>{bib_data["match_info"]}
     </p>
     ''')
 
@@ -184,3 +207,5 @@ with open("results.html", "a", encoding="utf-8") as file:
 </body>
 </html>
 ''')
+
+#TAKE NON-BOOK ITEMS INTO ACCOUNT NEXT
