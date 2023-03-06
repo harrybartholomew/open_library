@@ -11,6 +11,11 @@ def get_json_from_openlibrary(query):
 
 
 def get_author_names(json_data, row):
+    if not json_data:
+        if isinstance(row['Citation Author'], str):
+            return [row['Citation Author']]
+        else:
+            return ["[no author]"]
     author_names = []
     if "authors" in json_data.keys():
         for author in json_data['authors']:
@@ -23,12 +28,15 @@ def get_author_names(json_data, row):
                 author_names.append("[no author]")
         return author_names
     else:
-        return [row["author"]]
+        if isinstance(row['Citation Author'], str):
+            return [row['Citation Author']]
+        else:
+            return ["[no author]"]
 
 
 def format_author_string(author_list):
     if author_list[0] == "[no author]":
-        return "[no author]"
+        return ""
     else:
         first_author_names = author_list[0].split()
         first_author_names.insert(0, first_author_names.pop(-1))
@@ -54,6 +62,7 @@ def format_author_string(author_list):
         return author_string
 
 
+
 def get_publisher(json_data):
     if "publishers" in json_data.keys():
         publisher = json_data["publishers"][0]
@@ -76,6 +85,13 @@ def remove_punctuation(string):
     return no_punc
 
 
+def check_if_statement_of_res(title_string):
+    if "/" in title_string:
+        return True
+    else:
+        return False
+
+
 def format_title(string):
     title_proper = remove_statement_of_responsibility(string)
     formatted_title_proper = remove_punctuation(title_proper).lower().strip()
@@ -84,13 +100,27 @@ def format_title(string):
     return new_string
 
 
-#CREATE HTML
+def get_notes_and_tags_html(row):
+    notes_and_tags_html = ""
+    if isinstance(row['Citation Public note'], str):
+        notes_and_tags_html += f'"{row["Citation Public note"]}"<br>'
+    if isinstance(row['Citation Tags'], str):
+        notes_and_tags_html += "<span style='color: grey'><em>"
+        split_tags = row['Citation Tags'].split(", ")
+        for tag in split_tags:
+            tag.replace(" ", "_")
+            notes_and_tags_html += f"#{tag} "
+        notes_and_tags_html += "</em></span><br>"
+    return notes_and_tags_html
+
+
+# CREATE HTML
 with open("results.html", "w", encoding="utf-8") as file:
     file.write('''
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>Results</title>
 </head>
 <body>''')
@@ -104,103 +134,131 @@ sections = []
 for index, row in leganto_list_data.iterrows():
     print(f"Checking item {counter} of {len(leganto_list_data.index)}")
     counter += 1
-    bib_data = {} #change variable name
-    #TEST PRINT
+    bib_data = {}
     print(f"TITLE: {row['Citation Title']}")
-    #STEP 1: CHECK IF THIS IS A BOOK
-    if row["Citation Type"] in ["Book", "Book chapter"]: #verify book chapter is formatted properly; add ebook?
-    #STEP 2: DOES QUEENS' HAVE A HOLDINGS RECORD ATTACHED?
-        if "Queens'" in row["Citation Availability"]:
-            bib_data["match"] = "Library's holdings are attached."
-            bib_data["colour"] = "MediumSeaGreen"
-            bib_data['match_info'] = ""
-            print(bib_data["match"])
-    #STEP 3: DOES THE ISBN MATCH QUEENS' ISBNs?
-    if "match" not in bib_data.keys():
-        leganto_ISBN = row["Citation ISBN"]
-        library_ISBNs = []  # used in step 4
-        for i, r in queens_library_data.iterrows():
-            if isinstance(r["ISBN"], str):
-                library_ISBNs += r["ISBN"].split("; ")
-                if leganto_ISBN in r["ISBN"].split("; "):
-                    bib_data["match"] = "ISBN matches library's holdings."
-                    bib_data["colour"] = "MediumSeaGreen"
-                    bib_data['match_info'] = ""
-                    print(bib_data["match"])
-                    break
-    #STEP 4: DO ANY OF THE OTHER OPEN LIBRARY EDITIONS MATCH QUEENS' ISBNs?
-    if "match" not in bib_data.keys():
-        ol_book_data = get_json_from_openlibrary("isbn/" + row["Citation ISBN"])
-        if ol_book_data is not False:
-            work_ID = ol_book_data["works"][0]["key"]
-            ol_work_data = get_json_from_openlibrary(work_ID + "/editions")
-            for edition in ol_work_data["entries"]:
-                if "isbn_13" in edition.keys():
-                    for edition_ISBN in edition['isbn_13']:
-                        if int(edition_ISBN) in library_ISBNs:
-                            bib_data["match"] = "work"
-                            bib_data["colour"] = "LightGreen"
-                            bib_data['match_info'] = f"Library has {edition['publishers'][0]}, {edition['publish_date']} edition."
-                            print(bib_data["match"])
-                            break
-    #STEP 5: ARE THERE ANY TEXT MATCHES FOR AUTHORS/TITLES AMONG QUEENS' HOLDINGS?
-    if "match" not in bib_data.keys():
-        matches = []
-        leganto_title = format_title(row["Citation Title"])
-        for i, r in queens_library_data.iterrows():
-            queens_title = format_title(r["Title"])
-            if leganto_title in queens_title:
-                matches.append({
-                    "MMSID": r["MMS Id"],
-                    "location": r["Location Name"],
-                    "classmark": r["Permanent Call Number"],
-                    "statement of res": r["245$c"],
-                    "title":r["Title"],
-                    "publisher": r["Publisher"],
-                    "date": r["Publication Date"]
-                })
-                bib_data["match"] = "Matches for this title are found among library holdings:"
-                bib_data["colour"] = "Orange"
-                if len(matches) > 7:
-                    bib_data["match"] = "This title matched with too many library titles to be accurate."
-                    bib_data["colour"] = "Orange"
-                    bib_data["match_info"] = ""
-                    break
-        if 0 < len(matches) < 8:
-            bib_data["match_info"] = "<ul>"
-            for match in matches:
-                bib_data["match_info"] += f'''
-<li><strong>{match['location']}: {match['classmark']}</strong> {match['title']} {match['statement of res']}<br>
-—{match["publisher"]}, {match['date']} [MMSID: {match['MMSID']}]</li>
-'''
-            bib_data["match_info"] += "</ul>"
-    #STEP 6: REMAINING ITEMS WITH NO MATCHES
-    if "match" not in bib_data.keys():
-        bib_data["match"] = "No match found."
-        bib_data["colour"] = "OrangeRed"
-        bib_data['match_info'] = ""
-    #HTML FORMATTING
+    # STRUCTURE INTO SECTIONS
     html_section = ""
     if row["Section Name"] not in sections:
         sections.append(row["Section Name"])
         html_section += f"<h1>{row['Section Name']}</h1>"
-    html_edition = ""
-    if isinstance(row["Citation Edition"], str):
-        html_edition += f"—{row['Citation Edition']}"
-    html_pub = "—"
-    if isinstance(row["Citation Place of publication"], str):
-        html_pub += f"{row['Citation Place of publication']} : "
-    html_pub += row["Citation Publisher"]
-    if html_pub[-1] not in ["]", "."]:
-        html_pub += f", {row['Citation Publication Date']}."
-    with open("results.html", "a", encoding="utf-8") as file:
-        file.write(f'''
-        {html_section}
-    <p><span style="color:{bib_data['colour']}"><strong>{row['Citation Title']}</strong>
-    <br>{html_edition}{html_pub}<br></span>{bib_data["match"]}<br>{bib_data["match_info"]}
-    </p>
-    ''')
-
+    # STEP 1: CHECK IF THIS IS A BOOK
+    if row["Citation Type"] in ["Book", "Book Chapter", "Book Extract", "E-book"]:
+        ol_book_data = get_json_from_openlibrary("isbn/" + str(row["Citation ISBN"]))
+        # STEP 2: DOES QUEENS' HAVE A HOLDINGS RECORD ATTACHED?
+        if "Queens'" in str(row["Citation Availability"]):
+            bib_data["match"] = "Library's holdings are attached."
+            bib_data["colour"] = "MediumSeaGreen"
+            bib_data['match_info'] = ""
+            print(bib_data["match"])
+        # STEP 3: DOES THE ISBN MATCH QUEENS' ISBNs?
+        if "match" not in bib_data.keys():
+            leganto_ISBN = row["Citation ISBN"]
+            library_ISBNs = []  # used in step 4
+            for i, r in queens_library_data.iterrows():
+                if isinstance(r["ISBN"], str):
+                    library_ISBNs += r["ISBN"].split("; ")
+                    if leganto_ISBN in r["ISBN"].split("; "):
+                        bib_data["match"] = "ISBN matches library's holdings."
+                        bib_data["colour"] = "MediumSeaGreen"
+                        bib_data['match_info'] = ""
+                        print(bib_data["match"])
+                        break
+        # STEP 4: DO ANY OF THE OTHER OPEN LIBRARY EDITIONS MATCH QUEENS' ISBNs?
+        if "match" not in bib_data.keys():
+            if ol_book_data is not False:
+                work_ID = ol_book_data["works"][0]["key"]
+                ol_work_data = get_json_from_openlibrary(work_ID + "/editions")
+                for edition in ol_work_data["entries"]:
+                    if "isbn_13" in edition.keys():
+                        for edition_ISBN in edition['isbn_13']:
+                            if int(edition_ISBN) in library_ISBNs:
+                                bib_data["match"] = "work"
+                                bib_data["colour"] = "LightGreen"
+                                bib_data[
+                                    'match_info'] = f"Library has {edition['publishers'][0]}, {edition['publish_date']} edition."
+                                print(bib_data["match"])
+                                break
+        # STEP 5: ARE THERE ANY TEXT MATCHES FOR AUTHORS/TITLES AMONG QUEENS' HOLDINGS?
+        if "match" not in bib_data.keys():
+            matches = []
+            leganto_title = format_title(row["Citation Title"])
+            for i, r in queens_library_data.iterrows():
+                queens_title = format_title(r["Title"])
+                if leganto_title in queens_title:
+                    matches.append({
+                        "MMSID": r["MMS Id"],
+                        "location": r["Location Name"],
+                        "classmark": r["Permanent Call Number"],
+                        "statement of res": r["245$c"],
+                        "title": r["Title"],
+                        "publisher": r["Publisher"],
+                        "date": r["Publication Date"]
+                    })
+                    bib_data["match"] = "Matches for this title are found among library holdings:"
+                    bib_data["colour"] = "Orange"
+                    bib_data["notes and tags"] = get_notes_and_tags_html(row)
+                    if len(matches) > 7:
+                        bib_data["match"] = "This title matched with too many library titles to be accurate."
+                        bib_data["colour"] = "Orange"
+                        bib_data["match_info"] = ""
+                        break
+            if 0 < len(matches) < 8:
+                bib_data["match_info"] = "<ul>"
+                for match in matches:
+                    bib_data["match_info"] += f'''
+    <li><strong>{match['location']}: {match['classmark']}</strong> {match['title']} {match['statement of res']}<br>
+    —{match["publisher"]}, {match['date']} [MMSID: {match['MMSID']}]</li>
+    '''
+                bib_data["match_info"] += "</ul>"
+        # STEP 6: REMAINING ITEMS WITH NO MATCHES
+        if "match" not in bib_data.keys():
+            bib_data["match"] = "No match found."
+            bib_data["colour"] = "OrangeRed"
+            bib_data['match_info'] = ""
+            bib_data["notes and tags"] = get_notes_and_tags_html(row)
+        # BOOK HTML FORMATTING
+        html_chapter_author = ""
+        if isinstance(row["Citation Chapter Author"], str):
+            html_chapter_author = f"{row['Citation Chapter Author'].replace('author', '')}, "
+        html_chapter = ""
+        if row["Citation Type"] == "Book Chapter":
+            html_chapter = f"'{row['Citation Chapter Title']}' in:<br>"
+        author_string = format_author_string(get_author_names(ol_book_data, row))
+        if len(author_string) > 0:
+            html_author = f"{author_string},"
+        else:
+            html_author = author_string
+        if check_if_statement_of_res(row['Citation Title']):
+            html_title = remove_statement_of_responsibility(row['Citation Title'])
+        else:
+            html_title = row['Citation Title']
+        html_edition = ""
+        if isinstance(row["Citation Edition"], str):
+            html_edition += f"—{row['Citation Edition']}"
+        html_pub = "—"
+        if isinstance(row["Citation Place of publication"], str):
+            html_pub += f"{row['Citation Place of publication']} : "
+        html_pub += row["Citation Publisher"]
+        if html_pub[-1] not in ["]", "."]:
+            html_pub += f", {row['Citation Publication Date']}."
+        if "notes and tags" not in bib_data.keys():
+            bib_data["notes and tags"] = ""
+        with open("results.html", "a", encoding="utf-8") as file:
+            file.write(f'''
+            {html_section}
+        <p>{html_chapter_author}{html_chapter}
+        <span style="color:{bib_data['colour']}"><strong>{html_author} <em>{html_title}</em></strong>
+        <br>{html_edition}{html_pub}<br>
+        </span>{bib_data["notes and tags"]}>{bib_data["match"]}<br>{bib_data["match_info"]}
+        </p>
+        ''')
+    else:  # NON-BOOK ITEMS
+        with open("results.html", "a", encoding="utf-8") as file:
+            file.write(f'''
+            {html_section}
+        <p><strong>{row['Citation Type']}:</strong> <span style="color:DimGrey">{row['Citation Title']}</span>
+        </p>
+        ''')
 
 with open("results.html", "a", encoding="utf-8") as file:
     file.write('''
@@ -208,4 +266,5 @@ with open("results.html", "a", encoding="utf-8") as file:
 </html>
 ''')
 
-#TAKE NON-BOOK ITEMS INTO ACCOUNT NEXT
+#FORMAT ARTICLES
+#SORT CODE INTO FUNCTIONS
