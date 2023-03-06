@@ -171,7 +171,7 @@ for index, row in leganto_list_data.iterrows():
             for match in matches:
                 bib_data["match_info"] += f'''
 <li><strong>{match['location']}: {match['classmark']}</strong> {match['title']} {match['statement of res']}<br>
-({match["publisher"]}, {match['date']}) [MMSID: {match['MMSID']}]</li>
+—{match["publisher"]}, {match['date']} [MMSID: {match['MMSID']}]</li>
 '''
             bib_data["match_info"] += "</ul>"
     #STEP 6: REMAINING ITEMS WITH NO MATCHES
