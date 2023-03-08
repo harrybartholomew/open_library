@@ -4,7 +4,7 @@ import requests, pandas
 # FUNCTIONS
 def get_json_from_openlibrary(query):
     response = requests.get(url=f"https://openlibrary.org/{query}.json")
-    if response.status_code == 404:
+    if response.status_code != 200:
         return False
     json_data = response.json()
     return json_data
@@ -60,7 +60,6 @@ def format_author_string(author_list):
             else:
                 author_string += f", {author}"
         return author_string
-
 
 
 def get_publisher(json_data):
@@ -121,13 +120,22 @@ with open("results.html", "w", encoding="utf-8") as file:
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Results</title>
+  <title>Autocheck results</title>
 </head>
 <body>''')
 
 # READ CSVs
 leganto_list_data = pandas.read_csv("example_leganto_list.csv")
-queens_library_data = pandas.read_csv("queens_library_holdings.csv")
+queens_library_data = pandas.read_csv("queens_library_holdings.csv", encoding="utf-8")
+
+# CREATE TABLE OF CONTENTS
+html_contents = "<h3>Contents:</h3><ul>"
+sections = leganto_list_data['Section Name'].unique()
+for i in range(len(sections)):
+    html_contents += f"<li><a href='#{i + 1}'>{sections[i]}</a></li>"
+html_contents += "</ul>"
+with open("results.html", "a", encoding="utf-8") as file:
+    file.write(html_contents)
 
 counter = 1
 sections = []
@@ -140,7 +148,7 @@ for index, row in leganto_list_data.iterrows():
     html_section = ""
     if row["Section Name"] not in sections:
         sections.append(row["Section Name"])
-        html_section += f"<h1>{row['Section Name']}</h1>"
+        html_section += f"<h2 id='{len(sections)}'>{row['Section Name']}</h2>"
     # STEP 1: CHECK IF THIS IS A BOOK
     if row["Citation Type"] in ["Book", "Book Chapter", "Book Extract", "E-book"]:
         ol_book_data = get_json_from_openlibrary("isbn/" + str(row["Citation ISBN"]))
@@ -149,7 +157,6 @@ for index, row in leganto_list_data.iterrows():
             bib_data["match"] = "Library's holdings are attached."
             bib_data["colour"] = "MediumSeaGreen"
             bib_data['match_info'] = ""
-            print(bib_data["match"])
         # STEP 3: DOES THE ISBN MATCH QUEENS' ISBNs?
         if "match" not in bib_data.keys():
             leganto_ISBN = row["Citation ISBN"]
@@ -161,7 +168,6 @@ for index, row in leganto_list_data.iterrows():
                         bib_data["match"] = "ISBN matches library's holdings."
                         bib_data["colour"] = "MediumSeaGreen"
                         bib_data['match_info'] = ""
-                        print(bib_data["match"])
                         break
         # STEP 4: DO ANY OF THE OTHER OPEN LIBRARY EDITIONS MATCH QUEENS' ISBNs?
         if "match" not in bib_data.keys():
@@ -176,7 +182,6 @@ for index, row in leganto_list_data.iterrows():
                                 bib_data["colour"] = "LightGreen"
                                 bib_data[
                                     'match_info'] = f"Library has {edition['publishers'][0]}, {edition['publish_date']} edition."
-                                print(bib_data["match"])
                                 break
         # STEP 5: ARE THERE ANY TEXT MATCHES FOR AUTHORS/TITLES AMONG QUEENS' HOLDINGS?
         if "match" not in bib_data.keys():
@@ -239,7 +244,7 @@ for index, row in leganto_list_data.iterrows():
         if isinstance(row["Citation Place of publication"], str):
             html_pub += f"{row['Citation Place of publication']} : "
         html_pub += row["Citation Publisher"]
-        if html_pub[-1] not in ["]", "."]:
+        if html_pub[-1] not in ["]", ".", "-"]:
             html_pub += f", {row['Citation Publication Date']}."
         if "notes and tags" not in bib_data.keys():
             bib_data["notes and tags"] = ""
@@ -252,11 +257,20 @@ for index, row in leganto_list_data.iterrows():
         </span>{bib_data["notes and tags"]}>{bib_data["match"]}<br>{bib_data["match_info"]}
         </p>
         ''')
-    else:  # NON-BOOK ITEMS
+    elif row['Citation Type'] == "Article":
         with open("results.html", "a", encoding="utf-8") as file:
             file.write(f'''
             {html_section}
-        <p><strong>{row['Citation Type']}:</strong> <span style="color:DimGrey">{row['Citation Title']}</span>
+        <p><strong><span style="color:DimGrey">{row['Citation Author']}, 
+        "{row['Citation Title']}", <em>{row['Citation Journal Title']}</em>
+         ({row['Citation Publication Date']})</span></strong> 
+        </p>
+        ''')
+    else:  # NON-BOOK/ARTICLE ITEMS
+        with open("results.html", "a", encoding="utf-8") as file:
+            file.write(f'''
+            {html_section}
+        <p><strong>{row['Citation Type']}:</strong> <span style="color:DimGrey"><em>{row['Citation Title']}</em></span>
         </p>
         ''')
 
@@ -266,5 +280,4 @@ with open("results.html", "a", encoding="utf-8") as file:
 </html>
 ''')
 
-#FORMAT ARTICLES
-#SORT CODE INTO FUNCTIONS
+# SORT CODE INTO FUNCTIONS
